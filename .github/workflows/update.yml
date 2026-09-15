@@ -1,0 +1,96 @@
+name: Update Redox
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 * * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: update-redox
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      changed: ${{ steps.changes.outputs.changed }}
+      source: ${{ steps.changes.outputs.source }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Read the latest stable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/update_formula.py
+      - id: changes
+        run: |
+          echo "source=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          if git diff --quiet -- Formula/redox.rb; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: steps.changes.outputs.changed == 'true'
+        with:
+          name: formula
+          path: Formula/redox.rb
+          if-no-files-found: error
+
+  validate:
+    needs: check
+    if: needs.check.outputs.changed == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, ubuntu-24.04]
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: 1
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.check.outputs.source }}
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: formula
+          path: Formula
+      - uses: Homebrew/actions/setup-homebrew@082c94ee19e776205cfa8e43802917d1425e2fe7 # main
+      - name: Register the checkout as a tap
+        run: |
+          mkdir -p "$(brew --repository)/Library/Taps/jackderksen"
+          ln -s "$GITHUB_WORKSPACE" "$(brew --repository)/Library/Taps/jackderksen/homebrew-tap"
+      - run: brew audit --strict --formula jackderksen/tap/redox
+      - run: brew install --build-from-source jackderksen/tap/redox
+      - run: brew test jackderksen/tap/redox
+
+  publish:
+    needs: [check, validate]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: formula
+          path: Formula
+      - name: Publish the tested formula
+        env:
+          TESTED_SOURCE: ${{ needs.check.outputs.source }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TESTED_SOURCE"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Formula/redox.rb
+          git commit -m 'Update Redox to the latest stable release'
+          git push origin HEAD:main

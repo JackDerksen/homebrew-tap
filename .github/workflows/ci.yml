@@ -1,0 +1,34 @@
+name: Test formula
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, ubuntu-24.04]
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: 1
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: Homebrew/actions/setup-homebrew@082c94ee19e776205cfa8e43802917d1425e2fe7 # main
+      - name: Register the checkout as a tap
+        run: |
+          mkdir -p "$(brew --repository)/Library/Taps/jackderksen"
+          ln -s "$GITHUB_WORKSPACE" "$(brew --repository)/Library/Taps/jackderksen/homebrew-tap"
+      - run: python3 -m unittest discover -s .github/scripts
+      - run: brew audit --strict --formula jackderksen/tap/redox
+      - run: brew install --build-from-source jackderksen/tap/redox
+      - run: brew test jackderksen/tap/redox
