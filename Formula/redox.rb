@@ -1,8 +1,8 @@
 class Redox < Formula
   desc "Terminal-based, Vim-like text editor built with MinUI"
   homepage "https://github.com/JackDerksen/redox"
-  url "https://github.com/JackDerksen/redox/archive/refs/tags/v0.9.0.tar.gz"
-  sha256 "680c9b3cd1997a1ceaa8ff4d5c91ecaf2948631dce8dcb4e0c08edebb5e5d77a"
+  url "https://github.com/JackDerksen/redox/archive/refs/tags/v0.9.1.tar.gz"
+  sha256 "2c479ca8906b0c99d431368ef4fef6c3c2e7d5cae25285146c1f0a0380209235"
   license "MIT"
 
   depends_on "rust" => :build
